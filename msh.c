@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
+#include <string.h>
 
 int main(void)
 {
@@ -29,7 +30,31 @@ int main(void)
             free(line);
             return EXIT_FAILURE; 
         } 
+        char ** args = malloc(((size_t)characters_read + 1)*sizeof(*args));
+
+        if(args == NULL){
+            perror("malloc");
+            free(line);
+            return EXIT_FAILURE;
+        }
+
+        size_t count = 0;
+        char*token = strtok(line, " \t\n");
+
+        while(token != NULL){
+            args[count] = token;
+            count++;
+            token = strtok(NULL, " \t\n");
+        }
+        args[count] = NULL;
+
+        if(count > 0){
+            for (size_t i = 0; args[i] != NULL; i++){
+                printf("argv[%zu] = %s\n", i, args[i]);
+            }
+        }
         
+        free(args);
     }   
     free(line);
     return EXIT_SUCCESS;
