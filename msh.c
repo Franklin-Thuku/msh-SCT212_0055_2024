@@ -7,16 +7,18 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <errno.h>
 
 int main(void)
 {
     char *line = NULL;
     size_t capacity = 0;
     ssize_t characters_read;
+    int last_status = 0;
 
     while (1)
     {
-        printf("msh> ");
+        printf("msh[%d]> ", last_status);
         fflush(stdout);
 
         characters_read = getline(&line, &capacity, stdin);
@@ -48,8 +50,7 @@ int main(void)
 
         while (token != NULL)
         {
-            args[count] = token;
-            count++;
+            args[count++] = token;
             token = strtok(NULL, " \t\n");
         }
 
@@ -64,30 +65,25 @@ int main(void)
                 if (count > 2)
                 {
                     fprintf(stderr, "cd: too many arguments\n");
+                    last_status = 1;
                 }
                 else
                 {
-                    const char *directory;
+                    const char *directory = count == 1 ? getenv("HOME") : args[1];
 
-                    if (count == 1)
+                    if (directory == NULL)
                     {
-                        directory = getenv("HOME");
-
-                        if (directory == NULL)
-                        {
-                            fprintf(stderr, "cd: HOME not set\n");
-                            free(args);
-                            continue;
-                        }
+                        fprintf(stderr, "cd: HOME not set\n");
+                        last_status = 1;
+                    }
+                    else if (chdir(directory) == -1)
+                    {
+                        perror("cd");
+                        last_status = 1;
                     }
                     else
                     {
-                        directory = args[1];
-                    }
-
-                    if (chdir(directory) == -1)
-                    {
-                        perror("cd");
+                        last_status = 0;
                     }
                 }
             }
@@ -99,12 +95,14 @@ int main(void)
                 printf("  help            Display this help message\n");
                 printf("  exit            Exit the shell\n");
                 printf("  Other commands  Execute external programs\n");
+                last_status = 0;
             }
             else if (strcmp(args[0], "exit") == 0)
             {
                 if (count > 1)
                 {
                     fprintf(stderr, "exit: too many arguments\n");
+                    last_status = 1;
                 }
                 else
                 {
@@ -118,6 +116,7 @@ int main(void)
                 if (pid < 0)
                 {
                     perror("fork");
+                    last_status = 1;
                 }
                 else if (pid == 0)
                 {
@@ -128,10 +127,26 @@ int main(void)
                 else
                 {
                     int status;
+                    pid_t result;
 
-                    if (waitpid(pid, &status, 0) == -1)
+                    do
+                    {
+                        result = waitpid(pid, &status, 0);
+                    }
+                    while (result == -1 && errno == EINTR);
+
+                    if (result == -1)
                     {
                         perror("waitpid");
+                        last_status = 1;
+                    }
+                    else if (WIFEXITED(status))
+                    {
+                        last_status = WEXITSTATUS(status);
+                    }
+                    else if (WIFSIGNALED(status))
+                    {
+                        last_status = 128 + WTERMSIG(status);
                     }
                 }
             }
