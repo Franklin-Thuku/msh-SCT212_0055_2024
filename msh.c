@@ -16,14 +16,11 @@ int main(void)
 
     while (1)
     {
-        /* Display prompt */
         printf("msh> ");
         fflush(stdout);
 
-        /* Read user input */
         characters_read = getline(&line, &capacity, stdin);
 
-        /* Handle end of input or read errors */
         if (characters_read == -1)
         {
             if (feof(stdin))
@@ -37,7 +34,6 @@ int main(void)
             return EXIT_FAILURE;
         }
 
-        /* Allocate memory for command arguments */
         char **args = malloc(((size_t)characters_read + 1) * sizeof(*args));
 
         if (args == NULL)
@@ -47,7 +43,6 @@ int main(void)
             return EXIT_FAILURE;
         }
 
-        /* Tokenize input into arguments */
         size_t count = 0;
         char *token = strtok(line, " \t\n");
 
@@ -55,49 +50,101 @@ int main(void)
         {
             args[count] = token;
             count++;
-
             token = strtok(NULL, " \t\n");
         }
 
-        /* Terminate argument array with NULL */
         args[count] = NULL;
 
-        /* Execute command only if input is not blank */
+        int exit_requested = 0;
+
         if (count > 0)
         {
-            pid_t pid = fork();
-
-            if (pid < 0)
+            if (strcmp(args[0], "cd") == 0)
             {
-                /* Handle fork failure */
-                perror("fork");
+                if (count > 2)
+                {
+                    fprintf(stderr, "cd: too many arguments\n");
+                }
+                else
+                {
+                    const char *directory;
+
+                    if (count == 1)
+                    {
+                        directory = getenv("HOME");
+
+                        if (directory == NULL)
+                        {
+                            fprintf(stderr, "cd: HOME not set\n");
+                            free(args);
+                            continue;
+                        }
+                    }
+                    else
+                    {
+                        directory = args[1];
+                    }
+
+                    if (chdir(directory) == -1)
+                    {
+                        perror("cd");
+                    }
+                }
             }
-            else if (pid == 0)
+            else if (strcmp(args[0], "help") == 0)
             {
-                /* Child process */
-                execvp(args[0], args);
-
-                /* execvp returns only when execution fails */
-                perror(args[0]);
-                _exit(127);
+                printf("msh - Minimal Shell\n");
+                printf("Available commands:\n");
+                printf("  cd [directory]  Change the current directory\n");
+                printf("  help            Display this help message\n");
+                printf("  exit            Exit the shell\n");
+                printf("  Other commands  Execute external programs\n");
+            }
+            else if (strcmp(args[0], "exit") == 0)
+            {
+                if (count > 1)
+                {
+                    fprintf(stderr, "exit: too many arguments\n");
+                }
+                else
+                {
+                    exit_requested = 1;
+                }
             }
             else
             {
-                /* Parent process */
-                int status;
+                pid_t pid = fork();
 
-                if (waitpid(pid, &status, 0) == -1)
+                if (pid < 0)
                 {
-                    perror("waitpid");
+                    perror("fork");
+                }
+                else if (pid == 0)
+                {
+                    execvp(args[0], args);
+                    perror(args[0]);
+                    _exit(127);
+                }
+                else
+                {
+                    int status;
+
+                    if (waitpid(pid, &status, 0) == -1)
+                    {
+                        perror("waitpid");
+                    }
                 }
             }
         }
 
-        /* Free argument array */
         free(args);
+
+        if (exit_requested)
+        {
+            break;
+        }
     }
 
-    /* Free input buffer */
     free(line);
 
     return EXIT_SUCCESS;
